@@ -18,8 +18,8 @@ const ROM_SIZE:     usize = 0x400000;
 impl Ps2
 {
     // use vec!
-    pub fn new() -> Ps2
+    pub fn new(bios_data: &[u8]) -> Ps2
     {
-        Ps2 { ee_ram: vec!(0; EE_RAM_SIZE), iop_ram: vec!(0; IOP_RAM_SIZE), rom: vec!(0; ROM_SIZE) }
+        Ps2 { ee_ram: vec!(0; EE_RAM_SIZE), iop_ram: vec!(0; IOP_RAM_SIZE), rom: Vec::from(bios_data) }
     }
 }
