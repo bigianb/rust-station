@@ -1,4 +1,5 @@
 use crate::system::r5900::R5900;
+use crate::system::r5900::R5900State;
 
 pub struct Ps2
 {
@@ -11,7 +12,7 @@ pub struct Ps2
     // 4Mb ROM mapped to both EE and IOP
     pub rom: Vec<u8>,
 
-    pub r5900: R5900
+    pub r5900: R5900State
 }
 
 const EE_RAM_SIZE:  usize = 0x200_0000;
@@ -26,13 +27,13 @@ impl Ps2
     /// Creates a new Ps2 object
     pub fn new(bios_data: &[u8]) -> Box<Ps2>
     {
-        let sys = Box::new(Ps2 { ee_ram: vec!(0; EE_RAM_SIZE), iop_ram: vec!(0; IOP_RAM_SIZE), rom: bios_data.to_vec(), r5900: R5900::new() });
+        let sys = Box::new(Ps2 { ee_ram: vec!(0; EE_RAM_SIZE), iop_ram: vec!(0; IOP_RAM_SIZE), rom: bios_data.to_vec(), r5900: R5900State::new() });
         return sys;
     }
 
-    pub fn step(&self)
+    pub fn step(&mut self)
     {
-        self.r5900.step(self);
+        R5900::step(self);
     }
 
     /// Reads a 32 bit unsigned value from the EE memory. Slow but simple.

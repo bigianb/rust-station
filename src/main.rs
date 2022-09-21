@@ -12,8 +12,12 @@ fn main() {
     let mut bios_data = Vec::new();
     bios_file.read_to_end(&mut bios_data).unwrap();
 
-    let ps2 = Ps2::new(&bios_data);
+    let mut ps2 = Ps2::new(&bios_data);
 
+    ps2.step();
+    ps2.step();
+    ps2.step();
+    ps2.step();
     ps2.step();
 
  //   let mut val = ps2.read_ee_u32(0xBFC0_0000);
