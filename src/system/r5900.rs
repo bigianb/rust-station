@@ -45,9 +45,9 @@ impl R5900
 
     fn op_special(sys: &mut Ps2, instruction: u32)
     {
-        let function_no: usize = (instruction  & 0x1f).try_into().unwrap();
+        let function_no: usize = (instruction  & 0x3f).try_into().unwrap();
         println!("SPECIAL 0x{:X}", function_no);
-        sys.r5900.pc += 4;
+        SPECIAL_HANDLERS[function_no](sys, instruction);
     }
 
     fn op_regimm(sys: &mut Ps2, instruction: u32)
@@ -277,6 +277,43 @@ impl R5900
     {
     }
 
+    
+    fn op_sll(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SLL");
+        sys.r5900.pc += 4;
+    }
+
+    fn op_srl(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SRL");
+        sys.r5900.pc += 4;
+    }
+
+    fn op_sra(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SRA");
+        sys.r5900.pc += 4;
+    }
+
+    fn op_sllv(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SLLV");
+        sys.r5900.pc += 4;
+    }
+
+    fn op_srlv(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SRLV");
+        sys.r5900.pc += 4;
+    }
+
+    fn op_srav(sys: &mut Ps2, instruction: u32)
+    {
+        println!("SRAV");
+        sys.r5900.pc += 4;
+    }
+
 }
 
 const OPCODE_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
@@ -288,4 +325,16 @@ const OPCODE_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
     /* 0x28 */ R5900::op_sb,      R5900::op_sh,     R5900::op_swl,     R5900::op_sw,      R5900::op_sdl,      R5900::op_sdr,     R5900::op_swr,     R5900::op_cache, 
     /* 0x30 */ R5900::op_illegal, R5900::op_lwc1,   R5900::op_illegal, R5900::op_pref,    R5900::op_illegal,  R5900::op_illegal, R5900::op_ldc2,    R5900::op_ld, 
     /* 0x38 */ R5900::op_illegal, R5900::op_swc1,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_sdc2,    R5900::op_sd, 
+];
+
+const SPECIAL_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
+    /* 0x00 */ R5900::op_sll, R5900::op_illegal, R5900::op_srl,       R5900::op_sra,     R5900::op_sllv,      R5900::op_illegal,     R5900::op_srlv,    R5900::op_srav,
+
+    /* 0x08 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x10 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x18 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x20 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x28 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x30 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
+    /* 0x38 */ R5900::op_illegal, R5900::op_illegal,   R5900::op_illegal, R5900::op_illegal, R5900::op_illegal,  R5900::op_illegal, R5900::op_illegal,    R5900::op_illegal, 
 ];
