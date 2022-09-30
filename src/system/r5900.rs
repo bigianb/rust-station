@@ -1,5 +1,11 @@
 use super::ps2::Ps2;
 
+// allows us to quickly turn off tracing
+macro_rules! trace {
+    ($fmt:expr) => (print!($fmt));
+    ($fmt:expr, $($arg:tt)*) => (print!($fmt, $($arg)*));
+}
+
 pub struct R5900State {
     pub pc: u32,
 
@@ -35,12 +41,12 @@ impl R5900 {
     pub fn step(sys: &mut Ps2) {
         let instruction = sys.read_ee_u32(sys.r5900.pc);
         let op_code: usize = ((instruction >> 26) & 0x3f).try_into().unwrap();
-        print!(
-            "0x{:X}:  0x{:X}    ",
+        trace!(
+            "{:#010X}:  {:#010X}    ",
             sys.r5900.pc, instruction
         );
         OPCODE_HANDLERS[op_code](sys, instruction);
-        print!("\n");
+        trace!("\n");
     }
 
     fn op_special(sys: &mut Ps2, instruction: u32) {
@@ -55,12 +61,12 @@ impl R5900 {
     fn op_jal(sys: &mut Ps2, instruction: u32) {}
 
     fn op_beq(sys: &mut Ps2, instruction: u32) {
-        println!("BEQ");
+        trace!("BEQ");
         sys.r5900.pc += 4;
     }
 
     fn op_bne(sys: &mut Ps2, instruction: u32) {
-        println!("BNE");
+        trace!("BNE");
         sys.r5900.pc += 4;
     }
 
@@ -73,7 +79,7 @@ impl R5900 {
     fn op_addiu(sys: &mut Ps2, instruction: u32) {}
 
     fn op_slti(sys: &mut Ps2, instruction: u32) {
-        println!("SLTI");
+        trace!("SLTI");
         sys.r5900.pc += 4;
     }
 
@@ -96,22 +102,22 @@ impl R5900 {
             0 => {
                 match function_no {
                     0 => {
-                        print!("MFC0 {}, {}", MIPS_GPR_NAMES[(rt as usize)], COP0_REGNAMES[(rd as usize)]);
+                        trace!("MFC0 {}, {}", MIPS_GPR_NAMES[(rt as usize)], COP0_REGNAMES[(rd as usize)]);
                     }
                     _ => {
-                        print!("MF0 - unknown function");
+                        trace!("MF0 - unknown function");
                     }
                 }
                 sys.r5900.pc += 4;
             }
             4 => {
-                print!("MT0");
+                trace!("MT0");
             }
             8 => {
-                print!("BC0");
+                trace!("BC0");
             }
             0x10 => {
-                print!("C0");
+                trace!("C0");
             }
             _ => (),
         }
@@ -188,262 +194,262 @@ impl R5900 {
     fn op_sd(sys: &mut Ps2, instruction: u32) {}
 
     fn op_sll(sys: &mut Ps2, instruction: u32) {
-        println!("SLL");
+        trace!("SLL");
         sys.r5900.pc += 4;
     }
 
     fn op_srl(sys: &mut Ps2, instruction: u32) {
-        println!("SRL");
+        trace!("SRL");
         sys.r5900.pc += 4;
     }
 
     fn op_sra(sys: &mut Ps2, instruction: u32) {
-        println!("SRA");
+        trace!("SRA");
         sys.r5900.pc += 4;
     }
 
     fn op_sllv(sys: &mut Ps2, instruction: u32) {
-        println!("SLLV");
+        trace!("SLLV");
         sys.r5900.pc += 4;
     }
 
     fn op_srlv(sys: &mut Ps2, instruction: u32) {
-        println!("SRLV");
+        trace!("SRLV");
         sys.r5900.pc += 4;
     }
 
     fn op_srav(sys: &mut Ps2, instruction: u32) {
-        println!("SRAV");
+        trace!("SRAV");
         sys.r5900.pc += 4;
     }
 
     fn op_jr(sys: &mut Ps2, instruction: u32) {
-        println!("JR");
+        trace!("JR");
         sys.r5900.pc += 4;
     }
 
     fn op_jalr(sys: &mut Ps2, instruction: u32) {
-        println!("JALR");
+        trace!("JALR");
         sys.r5900.pc += 4;
     }
 
     fn op_movz(sys: &mut Ps2, instruction: u32) {
-        println!("MOVZ");
+        trace!("MOVZ");
         sys.r5900.pc += 4;
     }
 
     fn op_movn(sys: &mut Ps2, instruction: u32) {
-        println!("MOVN");
+        trace!("MOVN");
         sys.r5900.pc += 4;
     }
 
     fn op_syscall(sys: &mut Ps2, instruction: u32) {
-        println!("SYSCALL");
+        trace!("SYSCALL");
         sys.r5900.pc += 4;
     }
 
     fn op_break(sys: &mut Ps2, instruction: u32) {
-        println!("BREAK");
+        trace!("BREAK");
         sys.r5900.pc += 4;
     }
 
     fn op_sync(sys: &mut Ps2, instruction: u32) {
-        println!("SYNC");
+        trace!("SYNC");
         sys.r5900.pc += 4;
     }
 
     fn op_mfhi(sys: &mut Ps2, instruction: u32) {
-        println!("MFHI");
+        trace!("MFHI");
         sys.r5900.pc += 4;
     }
 
     fn op_mflo(sys: &mut Ps2, instruction: u32) {
-        println!("MFLO");
+        trace!("MFLO");
         sys.r5900.pc += 4;
     }
 
     fn op_mthi(sys: &mut Ps2, instruction: u32) {
-        println!("MTHI");
+        trace!("MTHI");
         sys.r5900.pc += 4;
     }
 
     fn op_mtlo(sys: &mut Ps2, instruction: u32) {
-        println!("MTLO");
+        trace!("MTLO");
         sys.r5900.pc += 4;
     }
 
     fn op_dsllv(sys: &mut Ps2, instruction: u32) {
-        println!("DSLLV");
+        trace!("DSLLV");
         sys.r5900.pc += 4;
     }
 
     fn op_dsrlv(sys: &mut Ps2, instruction: u32) {
-        println!("DSRLV");
+        trace!("DSRLV");
         sys.r5900.pc += 4;
     }
 
     fn op_dsrav(sys: &mut Ps2, instruction: u32) {
-        println!("DSRAV");
+        trace!("DSRAV");
         sys.r5900.pc += 4;
     }
 
     fn op_mult(sys: &mut Ps2, instruction: u32) {
-        println!("MULT");
+        trace!("MULT");
         sys.r5900.pc += 4;
     }
 
     fn op_multu(sys: &mut Ps2, instruction: u32) {
-        println!("MULTU");
+        trace!("MULTU");
         sys.r5900.pc += 4;
     }
 
     fn op_div(sys: &mut Ps2, instruction: u32) {
-        println!("DIV");
+        trace!("DIV");
         sys.r5900.pc += 4;
     }
 
     fn op_divu(sys: &mut Ps2, instruction: u32) {
-        println!("DIVU");
+        trace!("DIVU");
         sys.r5900.pc += 4;
     }
 
     fn op_add(sys: &mut Ps2, instruction: u32) {
-        println!("ADD");
+        trace!("ADD");
         sys.r5900.pc += 4;
     }
 
     fn op_addu(sys: &mut Ps2, instruction: u32) {
-        println!("ADDU");
+        trace!("ADDU");
         sys.r5900.pc += 4;
     }
 
     fn op_sub(sys: &mut Ps2, instruction: u32) {
-        println!("SUB");
+        trace!("SUB");
         sys.r5900.pc += 4;
     }
 
     fn op_subu(sys: &mut Ps2, instruction: u32) {
-        println!("SUBU");
+        trace!("SUBU");
         sys.r5900.pc += 4;
     }
 
     fn op_and(sys: &mut Ps2, instruction: u32) {
-        println!("AND");
+        trace!("AND");
         sys.r5900.pc += 4;
     }
 
     fn op_or(sys: &mut Ps2, instruction: u32) {
-        println!("OR");
+        trace!("OR");
         sys.r5900.pc += 4;
     }
 
     fn op_xor(sys: &mut Ps2, instruction: u32) {
-        println!("XOR");
+        trace!("XOR");
         sys.r5900.pc += 4;
     }
 
     fn op_nor(sys: &mut Ps2, instruction: u32) {
-        println!("NOR");
+        trace!("NOR");
         sys.r5900.pc += 4;
     }
 
     fn op_mfsa(sys: &mut Ps2, instruction: u32) {
-        println!("MFSA");
+        trace!("MFSA");
         sys.r5900.pc += 4;
     }
 
     fn op_mtsa(sys: &mut Ps2, instruction: u32) {
-        println!("MTSA");
+        trace!("MTSA");
         sys.r5900.pc += 4;
     }
 
     fn op_slt(sys: &mut Ps2, instruction: u32) {
-        println!("SLT");
+        trace!("SLT");
         sys.r5900.pc += 4;
     }
 
     fn op_sltu(sys: &mut Ps2, instruction: u32) {
-        println!("SLTU");
+        trace!("SLTU");
         sys.r5900.pc += 4;
     }
 
     fn op_dadd(sys: &mut Ps2, instruction: u32) {
-        println!("DADD");
+        trace!("DADD");
         sys.r5900.pc += 4;
     }
 
     fn op_daddu(sys: &mut Ps2, instruction: u32) {
-        println!("DADDU");
+        trace!("DADDU");
         sys.r5900.pc += 4;
     }
 
     fn op_dsub(sys: &mut Ps2, instruction: u32) {
-        println!("DSUB");
+        trace!("DSUB");
         sys.r5900.pc += 4;
     }
 
     fn op_dsubu(sys: &mut Ps2, instruction: u32) {
-        println!("DSUBU");
+        trace!("DSUBU");
         sys.r5900.pc += 4;
     }
 
     fn op_tge(sys: &mut Ps2, instruction: u32) {
-        println!("TGE");
+        trace!("TGE");
         sys.r5900.pc += 4;
     }
 
     fn op_tgeu(sys: &mut Ps2, instruction: u32) {
-        println!("TGEU");
+        trace!("TGEU");
         sys.r5900.pc += 4;
     }
 
     fn op_tlt(sys: &mut Ps2, instruction: u32) {
-        println!("TLT");
+        trace!("TLT");
         sys.r5900.pc += 4;
     }
 
     fn op_tltu(sys: &mut Ps2, instruction: u32) {
-        println!("TLTU");
+        trace!("TLTU");
         sys.r5900.pc += 4;
     }
 
     fn op_teq(sys: &mut Ps2, instruction: u32) {
-        println!("TEQ");
+        trace!("TEQ");
         sys.r5900.pc += 4;
     }
 
     fn op_tne(sys: &mut Ps2, instruction: u32) {
-        println!("TNE");
+        trace!("TNE");
         sys.r5900.pc += 4;
     }
 
     fn op_dsll(sys: &mut Ps2, instruction: u32) {
-        println!("DSLL");
+        trace!("DSLL");
         sys.r5900.pc += 4;
     }
 
     fn op_dsrl(sys: &mut Ps2, instruction: u32) {
-        println!("DSRL");
+        trace!("DSRL");
         sys.r5900.pc += 4;
     }
 
     fn op_dsra(sys: &mut Ps2, instruction: u32) {
-        println!("DSRA");
+        trace!("DSRA");
         sys.r5900.pc += 4;
     }
 
     fn op_dsll32(sys: &mut Ps2, instruction: u32) {
-        println!("DSLL32");
+        trace!("DSLL32");
         sys.r5900.pc += 4;
     }
 
     fn op_dsrl32(sys: &mut Ps2, instruction: u32) {
-        println!("DSRL32");
+        trace!("DSRL32");
         sys.r5900.pc += 4;
     }
 
     fn op_dsra32(sys: &mut Ps2, instruction: u32) {
-        println!("DSRA32");
+        trace!("DSRA32");
         sys.r5900.pc += 4;
     }
 }
