@@ -79,7 +79,11 @@ impl R5900 {
     fn op_addiu(sys: &mut Ps2, instruction: u32) {}
 
     fn op_slti(sys: &mut Ps2, instruction: u32) {
-        trace!("SLTI");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = instruction & 0xffff;
+
+        trace!("SLTI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
         sys.r5900.pc += 4;
     }
 
@@ -95,14 +99,15 @@ impl R5900 {
 
     fn op_cop0(sys: &mut Ps2, instruction: u32) {
         let rs = (instruction >> 21) & 0x1f;
-        let rt = (instruction >> 16) & 0x1f;
-        let rd = (instruction >> 11) & 0x1f;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let rd = ((instruction >> 11) & 0x1f) as usize;
         let function_no = instruction & 0x3f;
         match rs {
             0 => {
                 match function_no {
                     0 => {
-                        trace!("MFC0 {}, {}", MIPS_GPR_NAMES[(rt as usize)], COP0_REGNAMES[(rd as usize)]);
+                        trace!("MFC0 {}, {}", MIPS_GPR_NAMES[rt], COP0_REGNAMES[rd]);
+                        sys.r5900.gpr_regs[rt][0] = sys.r5900.cop0_regs[rd];
                     }
                     _ => {
                         trace!("MF0 - unknown function");
@@ -194,7 +199,11 @@ impl R5900 {
     fn op_sd(sys: &mut Ps2, instruction: u32) {}
 
     fn op_sll(sys: &mut Ps2, instruction: u32) {
-        trace!("SLL");
+        if instruction == 0 {
+            trace!("NOP");
+        } else {
+            trace!("SLL");
+        }
         sys.r5900.pc += 4;
     }
 
