@@ -8,6 +8,11 @@ macro_rules! trace {
 
 pub struct R5900State {
     pub pc: u32,
+    /* The address to branch to after a delay slot */
+    pub branch_address: u32,
+
+    /* The address of the current delay slot. If zero, we're not subject to a delay slot. */
+    pub delay_slot_addr: u32,
 
     pub gpr_regs: [[u32; 4]; 32],
 
@@ -18,7 +23,7 @@ const COP0_PRID: usize = 0x0f;
 
 impl R5900State {
     pub fn new() -> R5900State {
-        let mut it = R5900State { pc: 0xBFC0_0000, gpr_regs: [[0;4]; 32], cop0_regs: [0; 32] };
+        let mut it = R5900State { pc: 0xBFC0_0000, branch_address: 0, delay_slot_addr: 0, gpr_regs: [[0;4]; 32], cop0_regs: [0; 32] };
         it.cop0_regs[COP0_PRID] = 0x00002e20;
         return it;
     }
@@ -65,8 +70,22 @@ impl R5900 {
         sys.r5900.pc += 4;
     }
 
+    fn schedule_branch(sys: &mut Ps2, offset: i16) {
+        sys.r5900.branch_address = ((offset as i32)* 4 + sys.r5900.pc as i32 + 4) as u32;
+        sys.r5900.delay_slot_addr = sys.r5900.pc;
+    }
+
     fn op_bne(sys: &mut Ps2, instruction: u32) {
-        trace!("BNE");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xffff) as i16;
+
+        trace!("BNE {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
+
+        if sys.r5900.cop0_regs[rs] != sys.r5900.cop0_regs[rt] {
+            Self::schedule_branch(sys, offset);
+        }
+
         sys.r5900.pc += 4;
     }
 
@@ -81,9 +100,17 @@ impl R5900 {
     fn op_slti(sys: &mut Ps2, instruction: u32) {
         let rs = ((instruction >> 21) & 0x1f) as usize;
         let rt = ((instruction >> 16) & 0x1f) as usize;
-        let imm = instruction & 0xffff;
+        let imm = (instruction & 0xffff) as i16;
 
         trace!("SLTI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+
+        let signed_rs = sys.r5900.cop0_regs[rs] as i32;
+        if signed_rs < imm.into() {
+            sys.r5900.cop0_regs[rt] = 1;
+        } else {
+            sys.r5900.cop0_regs[rt] = 0;
+        }
+
         sys.r5900.pc += 4;
     }
 
@@ -635,7 +662,7 @@ const COP0_REGNAMES: [&str; 32] =
 
 const MIPS_GPR_NAMES: [&str; 32] = 
 [
-    "R0", "AT", "V0", "V1", "A0", "A1", "A2", "A3",
+    "Zero", "AT", "V0", "V1", "A0", "A1", "A2", "A3",
     "T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7",
     "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7",
     "T8", "T9", "K0", "K1", "GP", "SP", "FP", "RA"
