@@ -50,8 +50,15 @@ impl R5900 {
             "{:#010X}:  {:#010X}    ",
             sys.r5900.pc, instruction
         );
+        trace!("{:#03X} ", op_code);
+        let in_branch_delay = sys.r5900.delay_slot_addr == sys.r5900.pc;
         OPCODE_HANDLERS[op_code](sys, instruction);
         trace!("\n");
+        if (in_branch_delay){
+            trace!("Branching");
+            sys.r5900.pc = sys.r5900.branch_address;
+            sys.r5900.delay_slot_addr = 0;
+        }
     }
 
     fn op_special(sys: &mut Ps2, instruction: u32) {
@@ -61,9 +68,15 @@ impl R5900 {
 
     fn op_regimm(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_j(sys: &mut Ps2, instruction: u32) {}
+    fn op_j(sys: &mut Ps2, instruction: u32) {
+        trace!("J");
+        sys.r5900.pc += 4;
+    }
 
-    fn op_jal(sys: &mut Ps2, instruction: u32) {}
+    fn op_jal(sys: &mut Ps2, instruction: u32) {
+        trace!("JAL");
+        sys.r5900.pc += 4;
+    }
 
     fn op_beq(sys: &mut Ps2, instruction: u32) {
         trace!("BEQ");
@@ -118,11 +131,17 @@ impl R5900 {
 
     fn op_andi(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_ori(sys: &mut Ps2, instruction: u32) {}
+    fn op_ori(sys: &mut Ps2, instruction: u32) {
+        trace!("ORI");
+        sys.r5900.pc += 4;
+    }
 
     fn op_xori(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_lui(sys: &mut Ps2, instruction: u32) {}
+    fn op_lui(sys: &mut Ps2, instruction: u32) {
+        trace!("LUI");
+        sys.r5900.pc += 4;
+    }
 
     fn op_cop0(sys: &mut Ps2, instruction: u32) {
         let rs = (instruction >> 21) & 0x1f;

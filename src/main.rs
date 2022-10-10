@@ -14,12 +14,10 @@ fn main() {
 
     let mut ps2 = Ps2::new(&bios_data);
 
-    ps2.step();
-    ps2.step();
-    ps2.step();
-    ps2.step();
-    ps2.step();
-
+    for _i in 0 .. 10 {
+        ps2.step();
+    }
+    
  //   let mut val = ps2.read_ee_u32(0xBFC0_0000);
  //   println!("0x{:X}", val);
 
