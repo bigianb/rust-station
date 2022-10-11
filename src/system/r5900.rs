@@ -119,9 +119,23 @@ impl R5900 {
 
     fn op_bgtz(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_addi(sys: &mut Ps2, instruction: u32) {}
+    fn op_addi(sys: &mut Ps2, instruction: u32) {
+        // TODO: should be checked and throw an exception
+        trace!("ADDI delegating to ");
+        Self::op_addiu(sys, instruction);
+    }
 
-    fn op_addiu(sys: &mut Ps2, instruction: u32) {}
+    fn op_addiu(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = (instruction & 0xFFFF) as i16;
+
+        trace!("ADDIU {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+
+        let rsval = sys.r5900.gpr_regs[rs][0] as i32;
+        sys.r5900.gpr_regs[rt][0] = (rsval + i32::from(imm)) as u32;
+        sys.r5900.pc += 4;
+    }
 
     fn op_slti(sys: &mut Ps2, instruction: u32) {
         let rs = ((instruction >> 21) & 0x1f) as usize;
@@ -153,6 +167,8 @@ impl R5900 {
         trace!("ORI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
 
         sys.r5900.gpr_regs[rt][0] = imm | sys.r5900.gpr_regs[rs][0];
+
+        trace!("    ->  {} = {:#10X}", MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][0]);
         sys.r5900.pc += 4;
     }
 
@@ -200,6 +216,7 @@ impl R5900 {
             }
             0x10 => {
                 trace!("C0");
+                sys.r5900.pc += 4;
             }
             _ => (),
         }
@@ -251,7 +268,18 @@ impl R5900 {
 
     fn op_swl(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_sw(sys: &mut Ps2, instruction: u32) {}
+    fn op_sw(sys: &mut Ps2, instruction: u32) {
+        let base = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = (instruction & 0xFFFF) as i16;
+
+        trace!("SW {}, {:#06X}({})", MIPS_GPR_NAMES[rt], imm, MIPS_GPR_NAMES[base]);
+
+        let addr = sys.r5900.gpr_regs[rt][0] as i32 + i32::from(imm);
+        sys.write_ee_u32(addr as u32, sys.r5900.gpr_regs[rt][0]);
+
+        sys.r5900.pc += 4;
+    }
 
     fn op_sdl(sys: &mut Ps2, instruction: u32) {}
 
