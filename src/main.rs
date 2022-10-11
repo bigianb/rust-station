@@ -14,7 +14,7 @@ fn main() {
 
     let mut ps2 = Ps2::new(&bios_data);
 
-    for _i in 0 .. 10 {
+    for _i in 0 .. 20 {
         ps2.step();
     }
     

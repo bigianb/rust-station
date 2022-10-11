@@ -54,8 +54,8 @@ impl R5900 {
         let in_branch_delay = sys.r5900.delay_slot_addr == sys.r5900.pc;
         OPCODE_HANDLERS[op_code](sys, instruction);
         trace!("\n");
-        if (in_branch_delay){
-            trace!("Branching");
+        if in_branch_delay {
+            trace!("Branching\n");
             sys.r5900.pc = sys.r5900.branch_address;
             sys.r5900.delay_slot_addr = 0;
         }
@@ -79,13 +79,26 @@ impl R5900 {
     }
 
     fn op_beq(sys: &mut Ps2, instruction: u32) {
-        trace!("BEQ");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xffff) as i16;
+
+        trace!("BEQ {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
+
+        if sys.r5900.gpr_regs[rs][0] == sys.r5900.gpr_regs[rt][0] {
+            Self::schedule_branch(sys, offset);
+        }
         sys.r5900.pc += 4;
     }
 
     fn schedule_branch(sys: &mut Ps2, offset: i16) {
         sys.r5900.branch_address = ((offset as i32)* 4 + sys.r5900.pc as i32 + 4) as u32;
-        sys.r5900.delay_slot_addr = sys.r5900.pc;
+        sys.r5900.delay_slot_addr = sys.r5900.pc+4;
+    }
+
+    fn schedule_jump(sys: &mut Ps2, addr: u32) {
+        sys.r5900.branch_address = addr;
+        sys.r5900.delay_slot_addr = sys.r5900.pc+4;
     }
 
     fn op_bne(sys: &mut Ps2, instruction: u32) {
@@ -95,7 +108,7 @@ impl R5900 {
 
         trace!("BNE {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
 
-        if sys.r5900.cop0_regs[rs] != sys.r5900.cop0_regs[rt] {
+        if sys.r5900.gpr_regs[rs][0] != sys.r5900.gpr_regs[rt][0] {
             Self::schedule_branch(sys, offset);
         }
 
@@ -116,12 +129,13 @@ impl R5900 {
         let imm = (instruction & 0xffff) as i16;
 
         trace!("SLTI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+        trace!("   -> SLTI {:#06X}, {:#06X}", sys.r5900.gpr_regs[rs][0], imm);
 
-        let signed_rs = sys.r5900.cop0_regs[rs] as i32;
+        let signed_rs = sys.r5900.gpr_regs[rs][0] as i32;
         if signed_rs < imm.into() {
-            sys.r5900.cop0_regs[rt] = 1;
+            sys.r5900.gpr_regs[rt][0] = 1;
         } else {
-            sys.r5900.cop0_regs[rt] = 0;
+            sys.r5900.gpr_regs[rt][0] = 0;
         }
 
         sys.r5900.pc += 4;
@@ -132,14 +146,30 @@ impl R5900 {
     fn op_andi(sys: &mut Ps2, instruction: u32) {}
 
     fn op_ori(sys: &mut Ps2, instruction: u32) {
-        trace!("ORI");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = instruction & 0xFFFF;
+
+        trace!("ORI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+
+        sys.r5900.gpr_regs[rt][0] = imm | sys.r5900.gpr_regs[rs][0];
         sys.r5900.pc += 4;
     }
 
     fn op_xori(sys: &mut Ps2, instruction: u32) {}
 
     fn op_lui(sys: &mut Ps2, instruction: u32) {
-        trace!("LUI");
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = (instruction & 0xFFFF) << 16;
+
+        trace!("LUI {}, {:#06X}", MIPS_GPR_NAMES[rt], instruction & 0xFFFF);
+
+        sys.r5900.gpr_regs[rt][0] = imm;
+        if imm & 0x80000000 == 0x80000000{
+            sys.r5900.gpr_regs[rt][1] = 0xFFFFFFFF;
+        } else {
+            sys.r5900.gpr_regs[rt][1] = 0;
+        }
         sys.r5900.pc += 4;
     }
 
@@ -163,6 +193,7 @@ impl R5900 {
             }
             4 => {
                 trace!("MT0");
+                sys.r5900.pc += 4;
             }
             8 => {
                 trace!("BC0");
@@ -279,7 +310,10 @@ impl R5900 {
     }
 
     fn op_jr(sys: &mut Ps2, instruction: u32) {
-        trace!("JR");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        trace!("JR {}", MIPS_GPR_NAMES[rs]);
+
+        Self::schedule_jump(sys, sys.r5900.gpr_regs[rs][0]);
         sys.r5900.pc += 4;
     }
 
