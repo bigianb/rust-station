@@ -47,6 +47,14 @@ impl Ps2
         return 0xDEAD_BEEF;
     }
 
+    pub fn read_ee_i8(&self, addr: u32) -> i8
+    {
+        let word_addr = addr & !3;
+        let word_val = self.read_ee_u32(word_addr);
+        
+        (word_val >> ((addr & 3) * 8) & 0xFF) as i8
+    }
+
     /// Writes a 32 bit unsigned value to the EE memory. Slow but simple.
     pub fn write_ee_u32(&mut self, addr: u32, value: u32)
     {

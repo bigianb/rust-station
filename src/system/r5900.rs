@@ -6,8 +6,24 @@ macro_rules! trace {
     ($fmt:expr, $($arg:tt)*) => (print!($fmt, $($arg)*));
 }
 
+// trace to a minimum width. Always expects parameters.
+macro_rules! tracew {
+    ($width:expr, $fmt:expr, $($arg:tt)*) => {
+        let str = format!($fmt, $($arg)*);
+        let width = $width;
+        print!("{:width$}", str);
+    };
+}
+
+// trace the op-code disassembly portion into a minimum width area.
+macro_rules! trace_opdis {
+    ($fmt:expr) => (tracew!(30, $fmt));
+    ($fmt:expr, $($arg:tt)*) => (tracew!(30, $fmt, $($arg)*));
+}
+
 pub struct R5900State {
     pub pc: u32,
+
     /* The address to branch to after a delay slot */
     pub branch_address: u32,
 
@@ -16,14 +32,19 @@ pub struct R5900State {
 
     pub gpr_regs: [[u32; 4]; 32],
 
-    pub cop0_regs: [u32; 32]
+    pub fpr_regs: [f32; 32],
+
+    pub cop0_regs: [u32; 32],
+
+    pub lo: u32,
+    pub hi: u32
 }
 
 const COP0_PRID: usize = 0x0f;
 
 impl R5900State {
     pub fn new() -> R5900State {
-        let mut it = R5900State { pc: 0xBFC0_0000, branch_address: 0, delay_slot_addr: 0, gpr_regs: [[0;4]; 32], cop0_regs: [0; 32] };
+        let mut it = R5900State { pc: 0xBFC0_0000, branch_address: 0, delay_slot_addr: 0, gpr_regs: [[0;4]; 32], fpr_regs: [0.0; 32], cop0_regs: [0; 32], lo: 0, hi: 0 };
         it.cop0_regs[COP0_PRID] = 0x00002e20;
         return it;
     }
@@ -50,7 +71,7 @@ impl R5900 {
             "{:#010X}:  {:#010X}    ",
             sys.r5900.pc, instruction
         );
-        trace!("{:#03X} ", op_code);
+        trace!("{:#04X} ", op_code);
         let in_branch_delay = sys.r5900.delay_slot_addr == sys.r5900.pc;
         OPCODE_HANDLERS[op_code](sys, instruction);
         trace!("\n");
@@ -74,7 +95,30 @@ impl R5900 {
     }
 
     fn op_jal(sys: &mut Ps2, instruction: u32) {
-        trace!("JAL");
+        let instr_index = instruction & 0x03FF_FFFF;
+        let jump_addr = instr_index*4 | (sys.r5900.pc & 0xf000_0000);
+
+        trace!("JAL {:#10X}", jump_addr);
+        Self::set_gpr_unsigned(sys, 31, sys.r5900.pc + 8);
+        Self::schedule_jump(sys, jump_addr);
+        sys.r5900.pc += 4;
+    }
+
+    fn op_jalr(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rd = ((instruction >> 11) & 0x1f) as usize;
+        trace!("JALR {}, {}", MIPS_GPR_NAMES[rd], MIPS_GPR_NAMES[rs]);
+
+        Self::set_gpr_unsigned(sys, rd, sys.r5900.pc + 8);
+        Self::schedule_jump(sys, sys.r5900.gpr_regs[rs][0]);
+        sys.r5900.pc += 4;
+    }
+    
+    fn op_jr(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        trace!("JR {}", MIPS_GPR_NAMES[rs]);
+
+        Self::schedule_jump(sys, sys.r5900.gpr_regs[rs][0]);
         sys.r5900.pc += 4;
     }
 
@@ -99,6 +143,20 @@ impl R5900 {
     fn schedule_jump(sys: &mut Ps2, addr: u32) {
         sys.r5900.branch_address = addr;
         sys.r5900.delay_slot_addr = sys.r5900.pc+4;
+    }
+
+    fn set_gpr_unsigned(sys: &mut Ps2, gpr: usize, value: u32) {
+        sys.r5900.gpr_regs[gpr][0] = value;
+        sys.r5900.gpr_regs[gpr][1] = 0; 
+    }
+
+    fn get_64_bit_reg(sys: &mut Ps2, gpr: usize) -> u64 {
+        (sys.r5900.gpr_regs[gpr][1] as u64)  << 32 | sys.r5900.gpr_regs[gpr][0] as u64
+    }
+
+    fn set_64_bit_reg(sys: &mut Ps2, gpr: usize, value: u64) {
+        sys.r5900.gpr_regs[gpr][0] = (value & 0xFFFFFFFF) as u32;
+        sys.r5900.gpr_regs[gpr][1] = (value >> 32) as u32;
     }
 
     fn op_bne(sys: &mut Ps2, instruction: u32) {
@@ -142,8 +200,8 @@ impl R5900 {
         let rt = ((instruction >> 16) & 0x1f) as usize;
         let imm = (instruction & 0xffff) as i16;
 
-        trace!("SLTI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
-        trace!("   -> SLTI {:#06X}, {:#06X}", sys.r5900.gpr_regs[rs][0], imm);
+        trace_opdis!("SLTI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+        trace!("-> SLTI {:#06X}, {:#06X}", sys.r5900.gpr_regs[rs][0], imm);
 
         let signed_rs = sys.r5900.gpr_regs[rs][0] as i32;
         if signed_rs < imm.into() {
@@ -155,24 +213,64 @@ impl R5900 {
         sys.r5900.pc += 4;
     }
 
-    fn op_sltiu(sys: &mut Ps2, instruction: u32) {}
+    fn op_sltiu(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = (((instruction & 0xffff) as i16) as i32) as u32;
 
-    fn op_andi(sys: &mut Ps2, instruction: u32) {}
+        trace_opdis!("SLTIU {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+
+        let rs_64 = Self::get_64_bit_reg(sys, rs);
+        
+        if rs_64 < imm.into() {
+            sys.r5900.gpr_regs[rt][0] = 1;
+        } else {
+            sys.r5900.gpr_regs[rt][0] = 0;
+        }
+        sys.r5900.gpr_regs[rt][1] = 0;
+
+        trace!("-> {:#X} < {:#X} -> {} = {}", rs_64, imm, MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][0]);
+
+        sys.r5900.pc += 4;
+    }
+
+    fn op_andi(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = instruction & 0xFFFF;
+
+        trace_opdis!("ANDI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+
+        sys.r5900.gpr_regs[rt][0] = imm & sys.r5900.gpr_regs[rs][0];
+
+        trace!("->  {} = {:#10X}", MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][0]);
+        sys.r5900.pc += 4;
+    }
 
     fn op_ori(sys: &mut Ps2, instruction: u32) {
         let rs = ((instruction >> 21) & 0x1f) as usize;
         let rt = ((instruction >> 16) & 0x1f) as usize;
         let imm = instruction & 0xFFFF;
 
-        trace!("ORI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
+        trace_opdis!("ORI {}, {}, {:#06X}", MIPS_GPR_NAMES[rt], MIPS_GPR_NAMES[rs], imm);
 
         sys.r5900.gpr_regs[rt][0] = imm | sys.r5900.gpr_regs[rs][0];
 
-        trace!("    ->  {} = {:#10X}", MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][0]);
+        trace!("->  {} = {:#10X}", MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][0]);
         sys.r5900.pc += 4;
     }
 
     fn op_xori(sys: &mut Ps2, instruction: u32) {}
+
+    fn write_sign_extended_32_bit_reg(sys: &mut Ps2, gpr: usize, value: u32)
+    {
+        sys.r5900.gpr_regs[gpr][0] = value;
+        if value & 0x80000000 == 0x80000000{
+            sys.r5900.gpr_regs[gpr][1] = 0xFFFFFFFF;
+        } else {
+            sys.r5900.gpr_regs[gpr][1] = 0;
+        }
+    }
 
     fn op_lui(sys: &mut Ps2, instruction: u32) {
         let rt = ((instruction >> 16) & 0x1f) as usize;
@@ -180,12 +278,7 @@ impl R5900 {
 
         trace!("LUI {}, {:#06X}", MIPS_GPR_NAMES[rt], instruction & 0xFFFF);
 
-        sys.r5900.gpr_regs[rt][0] = imm;
-        if imm & 0x80000000 == 0x80000000{
-            sys.r5900.gpr_regs[rt][1] = 0xFFFFFFFF;
-        } else {
-            sys.r5900.gpr_regs[rt][1] = 0;
-        }
+        Self::write_sign_extended_32_bit_reg(sys, rt, imm);
         sys.r5900.pc += 4;
     }
 
@@ -228,9 +321,37 @@ impl R5900 {
 
     fn op_illegal(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_beql(sys: &mut Ps2, instruction: u32) {}
+    fn op_beql(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xFFFF) as i16;
 
-    fn op_bnel(sys: &mut Ps2, instruction: u32) {}
+        trace_opdis!("BEQL {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
+
+        if sys.r5900.gpr_regs[rs][0] == sys.r5900.gpr_regs[rt][0] {
+            Self::schedule_branch(sys, offset);
+            sys.r5900.pc += 4;
+        } else {
+            trace!("-> not taken, skip delay slot");
+            sys.r5900.pc += 8;
+        }
+    }
+
+    fn op_bnel(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xFFFF) as i16;
+
+        trace_opdis!("BNEL {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
+
+        if sys.r5900.gpr_regs[rs][0] != sys.r5900.gpr_regs[rt][0] {
+            Self::schedule_branch(sys, offset);
+            sys.r5900.pc += 4;
+        } else {
+            trace!("-> not taken, skip delay slot");
+            sys.r5900.pc += 8;
+        }
+    }
 
     fn op_blezl(sys: &mut Ps2, instruction: u32) {}
 
@@ -246,7 +367,24 @@ impl R5900 {
 
     fn op_special2(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_lb(sys: &mut Ps2, instruction: u32) {}
+    fn op_lb(sys: &mut Ps2, instruction: u32) {
+        let base = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xFFFF) as i16;
+
+        trace_opdis!("LB {}, {:#06X}({})", MIPS_GPR_NAMES[rt], offset, MIPS_GPR_NAMES[base]);
+
+        let addr = (sys.r5900.gpr_regs[base][0] as i32) + offset as i32;
+        let bval = sys.read_ee_i8(addr as u32) as i32;
+        sys.r5900.gpr_regs[rt][0] = bval as u32;
+        if bval < 0{
+            sys.r5900.gpr_regs[rt][1] = 0xFFFF_FFFF;
+        } else {
+            sys.r5900.gpr_regs[rt][1] = 0x0;
+        }
+        trace!("{} = {:#010X}_{:010X}", MIPS_GPR_NAMES[rt], sys.r5900.gpr_regs[rt][1], sys.r5900.gpr_regs[rt][0]);
+        sys.r5900.pc += 4;
+    }
 
     fn op_lh(sys: &mut Ps2, instruction: u32) {}
 
@@ -273,9 +411,9 @@ impl R5900 {
         let rt = ((instruction >> 16) & 0x1f) as usize;
         let imm = (instruction & 0xFFFF) as i16;
 
-        trace!("SW {}, {:#06X}({})", MIPS_GPR_NAMES[rt], imm, MIPS_GPR_NAMES[base]);
+        trace_opdis!("SW {}, {:#06X}({})", MIPS_GPR_NAMES[rt], imm, MIPS_GPR_NAMES[base]);
 
-        let addr = sys.r5900.gpr_regs[rt][0] as i32 + i32::from(imm);
+        let addr = sys.r5900.gpr_regs[base][0] as i32 + i32::from(imm);
         sys.write_ee_u32(addr as u32, sys.r5900.gpr_regs[rt][0]);
 
         sys.r5900.pc += 4;
@@ -297,17 +435,48 @@ impl R5900 {
 
     fn op_ld(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_swc1(sys: &mut Ps2, instruction: u32) {}
+    fn op_swc1(sys: &mut Ps2, instruction: u32) {
+        let base = ((instruction >> 21) & 0x1f) as usize;
+        let ft = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xFFFF) as i16;
+
+        trace_opdis!("SWC1 {}, {:#06X}({})", MIPS_FPR_NAMES[ft], offset, MIPS_GPR_NAMES[base]);
+
+        let addr = sys.r5900.gpr_regs[base][0] as i32 + i32::from(offset);
+        sys.write_ee_u32(addr as u32, sys.r5900.fpr_regs[ft] as u32);
+
+        sys.r5900.pc += 4;
+    }
 
     fn op_sdc2(sys: &mut Ps2, instruction: u32) {}
 
-    fn op_sd(sys: &mut Ps2, instruction: u32) {}
+    fn op_sd(sys: &mut Ps2, instruction: u32) {
+        let base = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let imm = (instruction & 0xFFFF) as i16;
+
+        trace!("SD {}, {:#06X}({})", MIPS_GPR_NAMES[rt], imm, MIPS_GPR_NAMES[base]);
+
+        let addr = (sys.r5900.gpr_regs[rt][0] as i32 + i32::from(imm)) as u32;
+        sys.write_ee_u32(addr, sys.r5900.gpr_regs[rt][0]);
+        sys.write_ee_u32(addr+4, sys.r5900.gpr_regs[rt][1]);
+
+        sys.r5900.pc += 4;
+    }
 
     fn op_sll(sys: &mut Ps2, instruction: u32) {
         if instruction == 0 {
             trace!("NOP");
         } else {
-            trace!("SLL");
+            let rt = ((instruction >> 16) & 0x1f) as usize;
+            let rd = ((instruction >> 11) & 0x1f) as usize;
+            let sa = ((instruction >> 6) & 0x1f) as usize;
+            trace_opdis!("SLL {}, {}, {}", MIPS_GPR_NAMES[rd], MIPS_GPR_NAMES[rt], sa);
+
+            let rt_val = sys.r5900.gpr_regs[rt][0] << sa;
+            Self::write_sign_extended_32_bit_reg(sys, rd, rt_val);
+
+            trace!("{} = {:#010X}", MIPS_GPR_NAMES[rd], rt_val);
         }
         sys.r5900.pc += 4;
     }
@@ -337,19 +506,6 @@ impl R5900 {
         sys.r5900.pc += 4;
     }
 
-    fn op_jr(sys: &mut Ps2, instruction: u32) {
-        let rs = ((instruction >> 21) & 0x1f) as usize;
-        trace!("JR {}", MIPS_GPR_NAMES[rs]);
-
-        Self::schedule_jump(sys, sys.r5900.gpr_regs[rs][0]);
-        sys.r5900.pc += 4;
-    }
-
-    fn op_jalr(sys: &mut Ps2, instruction: u32) {
-        trace!("JALR");
-        sys.r5900.pc += 4;
-    }
-
     fn op_movz(sys: &mut Ps2, instruction: u32) {
         trace!("MOVZ");
         sys.r5900.pc += 4;
@@ -376,12 +532,16 @@ impl R5900 {
     }
 
     fn op_mfhi(sys: &mut Ps2, instruction: u32) {
-        trace!("MFHI");
+        let rd = ((instruction >> 11) & 0x1f) as usize;
+        trace!("MFHI {}", MIPS_GPR_NAMES[rd]);
+        sys.r5900.gpr_regs[rd][0] = sys.r5900.hi;
         sys.r5900.pc += 4;
     }
 
     fn op_mflo(sys: &mut Ps2, instruction: u32) {
-        trace!("MFLO");
+        let rd = ((instruction >> 11) & 0x1f) as usize;
+        trace!("MFLO {}", MIPS_GPR_NAMES[rd]);
+        sys.r5900.gpr_regs[rd][0] = sys.r5900.lo;
         sys.r5900.pc += 4;
     }
 
@@ -411,7 +571,19 @@ impl R5900 {
     }
 
     fn op_mult(sys: &mut Ps2, instruction: u32) {
-        trace!("MULT");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        trace_opdis!("MULT {}, {}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt]);
+
+        let rs_val = sys.r5900.gpr_regs[rs][0] as i32;
+        let rt_val = sys.r5900.gpr_regs[rt][0] as i32;
+
+        let result: i64 = (rs_val as i64) * (rt_val as i64);
+        sys.r5900.lo = result as u32;
+        sys.r5900.hi = (result >> 32) as u32;
+
+        trace!("->  HI={:#X}, LO={:#X}", sys.r5900.hi, sys.r5900.lo);
+
         sys.r5900.pc += 4;
     }
 
@@ -426,7 +598,20 @@ impl R5900 {
     }
 
     fn op_divu(sys: &mut Ps2, instruction: u32) {
-        trace!("DIVU");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        trace_opdis!("DIVU {}, {}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt]);
+
+        let rs_val = sys.r5900.gpr_regs[rs][0];
+        let rt_val = sys.r5900.gpr_regs[rt][0];
+
+        if rt_val != 0{
+            sys.r5900.lo = rs_val / rt_val;
+            sys.r5900.hi = rs_val % rt_val;
+        } else {
+            trace!(" ** DIVIDE BY ZERO ***");
+        }
+        trace!("->  HI={:#X}, LO={:#X}", sys.r5900.hi, sys.r5900.lo);
         sys.r5900.pc += 4;
     }
 
@@ -456,7 +641,17 @@ impl R5900 {
     }
 
     fn op_or(sys: &mut Ps2, instruction: u32) {
-        trace!("OR");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let rd = ((instruction >> 11) & 0x1f) as usize;
+
+        trace_opdis!("OR {}, {}, {}", MIPS_GPR_NAMES[rd], MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt]);
+
+        sys.r5900.gpr_regs[rd][0] = sys.r5900.gpr_regs[rs][0] | sys.r5900.gpr_regs[rt][0];
+        sys.r5900.gpr_regs[rd][1] = sys.r5900.gpr_regs[rs][1] | sys.r5900.gpr_regs[rt][1];
+
+        trace!("->  {} = {:#010X}_{:010X}", MIPS_GPR_NAMES[rd], sys.r5900.gpr_regs[rd][1], sys.r5900.gpr_regs[rd][0]);
+        sys.r5900.pc += 4;
         sys.r5900.pc += 4;
     }
 
@@ -496,7 +691,21 @@ impl R5900 {
     }
 
     fn op_daddu(sys: &mut Ps2, instruction: u32) {
-        trace!("DADDU");
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let rd = ((instruction >> 11) & 0x1f) as usize;
+        trace_opdis!("DADDU {}, {}, {}", MIPS_GPR_NAMES[rd], MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt]);
+        if rs == 0 {
+            // DADDU x, zero, y is used as an assignment
+            sys.r5900.gpr_regs[rd][0] = sys.r5900.gpr_regs[rt][0];
+            sys.r5900.gpr_regs[rd][1] = sys.r5900.gpr_regs[rt][1];
+        } else {
+            let sval = Self::get_64_bit_reg(sys, rs);
+            let tval = Self::get_64_bit_reg(sys, rt);
+            let total = sval + tval;
+            Self::set_64_bit_reg(sys, rd, total);
+        }
+        trace!("{} = {:#X}", MIPS_GPR_NAMES[rd], Self::get_64_bit_reg(sys, rd));
         sys.r5900.pc += 4;
     }
 
@@ -747,4 +956,12 @@ const MIPS_GPR_NAMES: [&str; 32] =
     "T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7",
     "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7",
     "T8", "T9", "K0", "K1", "GP", "SP", "FP", "RA"
+];
+
+const MIPS_FPR_NAMES: [&str; 32] = 
+[
+    "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7",
+    "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15",
+    "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23",
+    "F24", "F25", "F26", "F27", "F28", "F29", "F30", "F31"
 ];
