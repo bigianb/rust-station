@@ -73,7 +73,7 @@ impl R5900 {
         );
         trace!("{:#04X} ", op_code);
         let in_branch_delay = sys.r5900.delay_slot_addr == sys.r5900.pc;
-        OPCODE_HANDLERS[op_code](sys, instruction);
+        Self::OPCODE_HANDLERS[op_code](sys, instruction);
         trace!("\n");
         if in_branch_delay {
             trace!("Branching\n");
@@ -87,7 +87,11 @@ impl R5900 {
         SPECIAL_HANDLERS[function_no](sys, instruction);
     }
 
-    fn op_regimm(sys: &mut Ps2, instruction: u32) {}
+    fn op_regimm(sys: &mut Ps2, instruction: u32) {
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        trace!("{}", rt);
+        REGIMM_HANDLERS[rt](sys, instruction);
+    }
 
     fn op_j(sys: &mut Ps2, instruction: u32) {
         trace!("J");
@@ -158,24 +162,6 @@ impl R5900 {
         sys.r5900.gpr_regs[gpr][0] = (value & 0xFFFFFFFF) as u32;
         sys.r5900.gpr_regs[gpr][1] = (value >> 32) as u32;
     }
-
-    fn op_bne(sys: &mut Ps2, instruction: u32) {
-        let rs = ((instruction >> 21) & 0x1f) as usize;
-        let rt = ((instruction >> 16) & 0x1f) as usize;
-        let offset = (instruction & 0xffff) as i16;
-
-        trace!("BNE {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
-
-        if sys.r5900.gpr_regs[rs][0] != sys.r5900.gpr_regs[rt][0] {
-            Self::schedule_branch(sys, offset);
-        }
-
-        sys.r5900.pc += 4;
-    }
-
-    fn op_blez(sys: &mut Ps2, instruction: u32) {}
-
-    fn op_bgtz(sys: &mut Ps2, instruction: u32) {}
 
     fn op_addi(sys: &mut Ps2, instruction: u32) {
         // TODO: should be checked and throw an exception
@@ -351,6 +337,42 @@ impl R5900 {
             trace!("-> not taken, skip delay slot");
             sys.r5900.pc += 8;
         }
+    }
+
+    fn op_bne(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let rt = ((instruction >> 16) & 0x1f) as usize;
+        let offset = (instruction & 0xffff) as i16;
+
+        trace!("BNE {}, {}, {:#06X}", MIPS_GPR_NAMES[rs], MIPS_GPR_NAMES[rt], offset);
+
+        if sys.r5900.gpr_regs[rs][0] != sys.r5900.gpr_regs[rt][0] {
+            Self::schedule_branch(sys, offset);
+        }
+
+        sys.r5900.pc += 4;
+    }
+
+    fn op_blez(sys: &mut Ps2, instruction: u32) {}
+
+    fn op_bgtz(sys: &mut Ps2, instruction: u32) {}
+
+    fn op_bltz(sys: &mut Ps2, instruction: u32) {
+    }
+
+    fn op_bgez(sys: &mut Ps2, instruction: u32) {
+        let rs = ((instruction >> 21) & 0x1f) as usize;
+        let offset = (instruction & 0xffff) as i16;
+
+        trace_opdis!("BGEZ {}, {}", MIPS_GPR_NAMES[rs], offset);
+
+        trace!("{} >= 0", sys.r5900.gpr_regs[rs][0] as i32);
+
+        if sys.r5900.gpr_regs[rs][0] as i32 >= 0 {
+            Self::schedule_branch(sys, offset);
+        }
+
+        sys.r5900.pc += 4;
     }
 
     fn op_blezl(sys: &mut Ps2, instruction: u32) {}
@@ -778,74 +800,77 @@ impl R5900 {
         trace!("DSRA32");
         sys.r5900.pc += 4;
     }
+
+    const OPCODE_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
+    /* 0x00 */ Self::op_special,
+    Self::op_regimm,
+    Self::op_j,
+    Self::op_jal,
+    Self::op_beq,
+    Self::op_bne,
+    Self::op_blez,
+    Self::op_bgtz,
+    /* 0x08 */ Self::op_addi,
+    Self::op_addiu,
+    Self::op_slti,
+    Self::op_sltiu,
+    Self::op_andi,
+    Self::op_ori,
+    Self::op_xori,
+    Self::op_lui,
+    /* 0x10 */ Self::op_cop0,
+    Self::op_cop1,
+    Self::op_cop2,
+    Self::op_illegal,
+    Self::op_beql,
+    Self::op_bnel,
+    Self::op_blezl,
+    Self::op_bgtzl,
+    /* 0x18 */ Self::op_daddi,
+    Self::op_daddiu,
+    Self::op_ldl,
+    Self::op_ldr,
+    Self::op_special2,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    /* 0x20 */ Self::op_lb,
+    Self::op_lh,
+    Self::op_lwl,
+    Self::op_lw,
+    Self::op_lbu,
+    Self::op_lhu,
+    Self::op_lwr,
+    Self::op_lwu,
+    /* 0x28 */ Self::op_sb,
+    Self::op_sh,
+    Self::op_swl,
+    Self::op_sw,
+    Self::op_sdl,
+    Self::op_sdr,
+    Self::op_swr,
+    Self::op_cache,
+    /* 0x30 */ Self::op_illegal,
+    Self::op_lwc1,
+    Self::op_illegal,
+    Self::op_pref,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_ldc2,
+    Self::op_ld,
+    /* 0x38 */ Self::op_illegal,
+    Self::op_swc1,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_sdc2,
+    Self::op_sd,
+];
+
 }
 
-const OPCODE_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
-    /* 0x00 */ R5900::op_special,
-    R5900::op_regimm,
-    R5900::op_j,
-    R5900::op_jal,
-    R5900::op_beq,
-    R5900::op_bne,
-    R5900::op_blez,
-    R5900::op_bgtz,
-    /* 0x08 */ R5900::op_addi,
-    R5900::op_addiu,
-    R5900::op_slti,
-    R5900::op_sltiu,
-    R5900::op_andi,
-    R5900::op_ori,
-    R5900::op_xori,
-    R5900::op_lui,
-    /* 0x10 */ R5900::op_cop0,
-    R5900::op_cop1,
-    R5900::op_cop2,
-    R5900::op_illegal,
-    R5900::op_beql,
-    R5900::op_bnel,
-    R5900::op_blezl,
-    R5900::op_bgtzl,
-    /* 0x18 */ R5900::op_daddi,
-    R5900::op_daddiu,
-    R5900::op_ldl,
-    R5900::op_ldr,
-    R5900::op_special2,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    /* 0x20 */ R5900::op_lb,
-    R5900::op_lh,
-    R5900::op_lwl,
-    R5900::op_lw,
-    R5900::op_lbu,
-    R5900::op_lhu,
-    R5900::op_lwr,
-    R5900::op_lwu,
-    /* 0x28 */ R5900::op_sb,
-    R5900::op_sh,
-    R5900::op_swl,
-    R5900::op_sw,
-    R5900::op_sdl,
-    R5900::op_sdr,
-    R5900::op_swr,
-    R5900::op_cache,
-    /* 0x30 */ R5900::op_illegal,
-    R5900::op_lwc1,
-    R5900::op_illegal,
-    R5900::op_pref,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_ldc2,
-    R5900::op_ld,
-    /* 0x38 */ R5900::op_illegal,
-    R5900::op_swc1,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_sdc2,
-    R5900::op_sd,
-];
+
 
 const SPECIAL_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
     /* 0x00 */ R5900::op_sll,
@@ -912,6 +937,41 @@ const SPECIAL_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
     R5900::op_illegal,
     R5900::op_dsrl32,
     R5900::op_dsra32,
+];
+
+const REGIMM_HANDLERS: [fn(&mut Ps2, u32); 0x20] = [
+    /* 0x00 */ R5900::op_bltz,
+    R5900::op_bgez,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    /* 0x08 */ R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    /* 0x10 */ R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    /* 0x18 */ R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal,
+    R5900::op_illegal
 ];
 
 const COP0_REGNAMES: [&str; 32] = 

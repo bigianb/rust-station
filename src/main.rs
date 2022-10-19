@@ -23,7 +23,7 @@ fn main() {
 
     let mut ps2 = Ps2::new(&bios_u32_data);
 
-    for _i in 0 .. 140 {
+    for _i in 0 .. 10000 {
         ps2.step();
     }
     
