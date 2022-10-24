@@ -84,13 +84,13 @@ impl R5900 {
 
     fn op_special(sys: &mut Ps2, instruction: u32) {
         let function_no: usize = (instruction & 0x3f).try_into().unwrap();
-        SPECIAL_HANDLERS[function_no](sys, instruction);
+        Self::SPECIAL_HANDLERS[function_no](sys, instruction);
     }
 
     fn op_regimm(sys: &mut Ps2, instruction: u32) {
         let rt = ((instruction >> 16) & 0x1f) as usize;
         trace!("{}", rt);
-        REGIMM_HANDLERS[rt](sys, instruction);
+        Self::REGIMM_HANDLERS[rt](sys, instruction);
     }
 
     fn op_j(sys: &mut Ps2, instruction: u32) {
@@ -100,7 +100,7 @@ impl R5900 {
 
     fn op_jal(sys: &mut Ps2, instruction: u32) {
         let instr_index = instruction & 0x03FF_FFFF;
-        let jump_addr = instr_index*4 | (sys.r5900.pc & 0xf000_0000);
+        let jump_addr = (instr_index*4) | ((sys.r5900.pc + 4) & 0xf000_0000);
 
         trace!("JAL {:#10X}", jump_addr);
         Self::set_gpr_unsigned(sys, 31, sys.r5900.pc + 8);
@@ -868,111 +868,139 @@ impl R5900 {
     Self::op_sd,
 ];
 
-}
-
-
-
 const SPECIAL_HANDLERS: [fn(&mut Ps2, u32); 0x40] = [
-    /* 0x00 */ R5900::op_sll,
-    R5900::op_illegal,
-    R5900::op_srl,
-    R5900::op_sra,
-    R5900::op_sllv,
-    R5900::op_illegal,
-    R5900::op_srlv,
-    R5900::op_srav,
-    /* 0x08 */ R5900::op_jr,
-    R5900::op_jalr,
-    R5900::op_movz,
-    R5900::op_movn,
-    R5900::op_syscall,
-    R5900::op_break,
-    R5900::op_illegal,
-    R5900::op_sync,
-    /* 0x10 */ R5900::op_mfhi,
-    R5900::op_mthi,
-    R5900::op_mflo,
-    R5900::op_mtlo,
-    R5900::op_dsllv,
-    R5900::op_illegal,
-    R5900::op_dsrlv,
-    R5900::op_dsrav,
-    /* 0x18 */ R5900::op_mult,
-    R5900::op_multu,
-    R5900::op_div,
-    R5900::op_divu,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    /* 0x20 */ R5900::op_add,
-    R5900::op_addu,
-    R5900::op_sub,
-    R5900::op_subu,
-    R5900::op_and,
-    R5900::op_or,
-    R5900::op_xor,
-    R5900::op_nor,
-    /* 0x28 */ R5900::op_mfsa,
-    R5900::op_mtsa,
-    R5900::op_slt,
-    R5900::op_sltu,
-    R5900::op_dadd,
-    R5900::op_daddu,
-    R5900::op_dsub,
-    R5900::op_dsubu,
-    /* 0x30 */ R5900::op_tge,
-    R5900::op_tgeu,
-    R5900::op_tlt,
-    R5900::op_tltu,
-    R5900::op_teq,
-    R5900::op_illegal,
-    R5900::op_tne,
-    R5900::op_illegal,
-    /* 0x38 */ R5900::op_dsll,
-    R5900::op_illegal,
-    R5900::op_dsrl,
-    R5900::op_dsra,
-    R5900::op_dsll32,
-    R5900::op_illegal,
-    R5900::op_dsrl32,
-    R5900::op_dsra32,
+    /* 0x00 */ Self::op_sll,
+    Self::op_illegal,
+    Self::op_srl,
+    Self::op_sra,
+    Self::op_sllv,
+    Self::op_illegal,
+    Self::op_srlv,
+    Self::op_srav,
+    /* 0x08 */ Self::op_jr,
+    Self::op_jalr,
+    Self::op_movz,
+    Self::op_movn,
+    Self::op_syscall,
+    Self::op_break,
+    Self::op_illegal,
+    Self::op_sync,
+    /* 0x10 */ Self::op_mfhi,
+    Self::op_mthi,
+    Self::op_mflo,
+    Self::op_mtlo,
+    Self::op_dsllv,
+    Self::op_illegal,
+    Self::op_dsrlv,
+    Self::op_dsrav,
+    /* 0x18 */ Self::op_mult,
+    Self::op_multu,
+    Self::op_div,
+    Self::op_divu,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    /* 0x20 */ Self::op_add,
+    Self::op_addu,
+    Self::op_sub,
+    Self::op_subu,
+    Self::op_and,
+    Self::op_or,
+    Self::op_xor,
+    Self::op_nor,
+    /* 0x28 */ Self::op_mfsa,
+    Self::op_mtsa,
+    Self::op_slt,
+    Self::op_sltu,
+    Self::op_dadd,
+    Self::op_daddu,
+    Self::op_dsub,
+    Self::op_dsubu,
+    /* 0x30 */ Self::op_tge,
+    Self::op_tgeu,
+    Self::op_tlt,
+    Self::op_tltu,
+    Self::op_teq,
+    Self::op_illegal,
+    Self::op_tne,
+    Self::op_illegal,
+    /* 0x38 */ Self::op_dsll,
+    Self::op_illegal,
+    Self::op_dsrl,
+    Self::op_dsra,
+    Self::op_dsll32,
+    Self::op_illegal,
+    Self::op_dsrl32,
+    Self::op_dsra32,
 ];
 
 const REGIMM_HANDLERS: [fn(&mut Ps2, u32); 0x20] = [
-    /* 0x00 */ R5900::op_bltz,
-    R5900::op_bgez,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    /* 0x08 */ R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    /* 0x10 */ R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    /* 0x18 */ R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal,
-    R5900::op_illegal
+    /* 0x00 */ Self::op_bltz,
+    Self::op_bgez,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    /* 0x08 */ Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    /* 0x10 */ Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    /* 0x18 */ Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal,
+    Self::op_illegal
 ];
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ps2::Ps2;
+    use super::*;
+    #[test]
+    fn test_op_jal() {
+        let bios_u32_data = vec!(0; 4);
+        let mut ps2 = Ps2::new(&bios_u32_data);
+        let jal_instr = (3 << 26) | 10;
+        R5900::op_jal(&mut ps2, jal_instr);
+
+        assert_eq!(0xBFC0_0004, ps2.r5900.pc);
+        assert_eq!(0xBFC0_0008, ps2.r5900.gpr_regs[31][0]);
+        assert_eq!(0xB000_0000 | 40, ps2.r5900.branch_address);
+    }
+
+    #[test]
+    fn test_op_jal_edge_case() {
+        let bios_u32_data = vec!(0; 4);
+        let mut ps2 = Ps2::new(&bios_u32_data);
+        let jal_instr = (3 << 26) | 10;
+        ps2.r5900.pc = 0xBFFF_FFFC;
+        R5900::op_jal(&mut ps2, jal_instr);
+
+        assert_eq!(0xC000_0000, ps2.r5900.pc);
+        assert_eq!(0xC000_0004, ps2.r5900.gpr_regs[31][0]);
+        assert_eq!(0xC000_0000 | 40, ps2.r5900.branch_address);
+    }
+}
 
 const COP0_REGNAMES: [&str; 32] = 
 [
